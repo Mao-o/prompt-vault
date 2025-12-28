@@ -195,12 +195,14 @@ queryInput?.addEventListener("input", (e) => {
 queryInput?.addEventListener("keydown", (e) => {
   if (e.key === "ArrowDown") {
     e.preventDefault();
-    if (!isLoading && !error) {
+    e.stopPropagation();
+    if (!error && results.length) {
       selectNext(1);
     }
   } else if (e.key === "ArrowUp") {
     e.preventDefault();
-    if (!isLoading && !error) {
+    e.stopPropagation();
+    if (!error && results.length) {
       selectNext(-1);
     }
   } else if (e.key === "Enter") {
@@ -235,6 +237,7 @@ window.addEventListener("keydown", (e) => {
 });
 
 window.addEventListener("load", () => {
+  document.body.classList.add("is-ready");
   // Focus input and ensure it stays focused
   if (queryInput) {
     queryInput.focus();
