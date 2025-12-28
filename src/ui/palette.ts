@@ -11,23 +11,25 @@ let toastTimer: number | null = null;
 let isLoading = false;
 let error: string | null = null;
 let pendingRequestId: string | null = null;
+let isComposing = false;
+let searchDebounce: number | null = null;
 
 function render() {
   resultsEl.innerHTML = "";
-
-  if (isLoading) {
-    const loading = document.createElement("div");
-    loading.className = "pv-loading";
-    loading.textContent = "Searching...";
-    resultsEl.appendChild(loading);
-    return;
-  }
 
   if (error) {
     const errorEl = document.createElement("div");
     errorEl.className = "pv-error";
     errorEl.textContent = error;
     resultsEl.appendChild(errorEl);
+    return;
+  }
+
+  if (!results.length && isLoading) {
+    const loading = document.createElement("div");
+    loading.className = "pv-loading";
+    loading.textContent = "Searching...";
+    resultsEl.appendChild(loading);
     return;
   }
 
@@ -61,6 +63,13 @@ function render() {
     item.appendChild(meta);
     resultsEl.appendChild(item);
   });
+
+  if (isLoading) {
+    const loading = document.createElement("div");
+    loading.className = "pv-loading pv-loading-inline";
+    loading.textContent = "Updating…";
+    resultsEl.appendChild(loading);
+  }
 }
 
 function runSearch(query: string) {
@@ -71,8 +80,10 @@ function runSearch(query: string) {
 
   isLoading = true;
   error = null;
-  selectedIndex = 0;
-  render();
+  // keep current results during loading to avoid flicker; render only if empty
+  if (!results.length) {
+    render();
+  }
 
   const requestId = crypto.randomUUID();
   pendingRequestId = requestId;
@@ -171,7 +182,14 @@ async function activateSelection() {
 
 queryInput?.addEventListener("input", (e) => {
   const value = (e.target as HTMLInputElement).value;
-  runSearch(value);
+  if (isComposing) return;
+  if (searchDebounce) {
+    window.clearTimeout(searchDebounce);
+  }
+  searchDebounce = window.setTimeout(() => {
+    runSearch(value);
+    searchDebounce = null;
+  }, 120);
 });
 
 queryInput?.addEventListener("keydown", (e) => {
@@ -193,6 +211,16 @@ queryInput?.addEventListener("keydown", (e) => {
     e.preventDefault();
     closePalette();
   }
+});
+
+queryInput?.addEventListener("compositionstart", () => {
+  isComposing = true;
+});
+
+queryInput?.addEventListener("compositionend", (e) => {
+  isComposing = false;
+  const value = (e.target as HTMLInputElement).value;
+  runSearch(value);
 });
 
 closeButton?.addEventListener("click", () => {

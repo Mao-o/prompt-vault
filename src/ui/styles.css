@@ -123,6 +123,13 @@ body {
   gap: 8px;
 }
 
+.pv-loading-inline {
+  padding-top: 6px;
+  padding-bottom: 6px;
+  font-size: 12px;
+  justify-content: flex-start;
+}
+
 .pv-loading::before {
   content: "";
   width: 16px;
