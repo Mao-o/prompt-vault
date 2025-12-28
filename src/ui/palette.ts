@@ -1,17 +1,45 @@
-import type { Msg } from "../core/types";
-import { recordUsage, searchPrompts } from "../core/search";
+import type { Msg, SearchResult } from "../core/types";
+import { recordUsage } from "../core/search";
 
 const queryInput = document.getElementById("query") as HTMLInputElement;
 const resultsEl = document.getElementById("results") as HTMLDivElement;
 const closeButton = document.getElementById("close") as HTMLButtonElement;
 const toastEl = document.getElementById("toast") as HTMLDivElement;
 
-let results = searchPrompts("", 20);
+let results: SearchResult[] = [];
 let selectedIndex = 0;
 let toastTimer: number | null = null;
+let isLoading = false;
+let error: string | null = null;
+let pendingRequestId: string | null = null;
 
 function render() {
   resultsEl.innerHTML = "";
+
+  if (isLoading) {
+    const loading = document.createElement("div");
+    loading.className = "pv-loading";
+    loading.textContent = "Searching...";
+    resultsEl.appendChild(loading);
+    return;
+  }
+
+  if (error) {
+    const errorEl = document.createElement("div");
+    errorEl.className = "pv-error";
+    errorEl.textContent = error;
+    resultsEl.appendChild(errorEl);
+    return;
+  }
+
+  if (!results.length) {
+    const empty = document.createElement("div");
+    empty.className = "pv-empty";
+    empty.textContent = "No results";
+    resultsEl.appendChild(empty);
+    return;
+  }
+
   results.forEach((result, idx) => {
     const item = document.createElement("div");
     item.className = "pv-result";
@@ -34,19 +62,36 @@ function render() {
     item.appendChild(meta);
     resultsEl.appendChild(item);
   });
-
-  if (!results.length) {
-    const empty = document.createElement("div");
-    empty.className = "pv-empty";
-    empty.textContent = "No results";
-    resultsEl.appendChild(empty);
-  }
 }
 
 function runSearch(query: string) {
-  results = searchPrompts(query, 20);
+  // Cancel pending request if any
+  if (pendingRequestId) {
+    pendingRequestId = null;
+  }
+
+  isLoading = true;
+  error = null;
   selectedIndex = 0;
   render();
+
+  const requestId = crypto.randomUUID();
+  pendingRequestId = requestId;
+
+  chrome.runtime.sendMessage({
+    type: "SEARCH/REQUEST",
+    requestId,
+    query,
+    limit: 20,
+  } satisfies Msg).catch((err) => {
+    if (pendingRequestId === requestId) {
+      isLoading = false;
+      error = "Search failed. Please try again.";
+      pendingRequestId = null;
+      render();
+    }
+    console.error("Search request failed:", err);
+  });
 }
 
 function selectNext(delta: number) {
@@ -56,20 +101,27 @@ function selectNext(delta: number) {
 }
 
 function closePalette() {
+  // Cancel any pending search
+  pendingRequestId = null;
+  isLoading = false;
+  // Restore focus to the previous element if possible
   chrome.runtime.sendMessage({ type: "UI/CLOSE", requestId: crypto.randomUUID() } satisfies Msg);
 }
 
 function showToast(message: string) {
   if (!toastEl) return;
+  // Clear any existing toast
+  clearToast();
   toastEl.textContent = message;
   toastEl.classList.add("is-visible");
-  if (toastTimer) {
-    window.clearTimeout(toastTimer);
-  }
+  // Force reflow to ensure transition
+  void toastEl.offsetWidth;
   toastTimer = window.setTimeout(() => {
-    toastEl.classList.remove("is-visible");
+    if (toastEl) {
+      toastEl.classList.remove("is-visible");
+    }
     toastTimer = null;
-  }, 1400);
+  }, 2000);
 }
 
 function clearToast() {
@@ -87,14 +139,36 @@ async function activateSelection() {
     closePalette();
     return;
   }
+
+  // If still loading, wait a bit for results (with timeout)
+  if (isLoading && results.length === 0) {
+    const maxWait = 2000; // 2 seconds max wait
+    const startTime = Date.now();
+    while (isLoading && results.length === 0 && Date.now() - startTime < maxWait) {
+      await new Promise((resolve) => setTimeout(resolve, 50));
+    }
+    // Re-check after waiting
+    const updatedChoice = results[selectedIndex];
+    if (!updatedChoice) {
+      closePalette();
+      return;
+    }
+  }
+
   recordUsage(choice.id);
-  await chrome.runtime.sendMessage({
-    type: "ACTION/EXECUTE",
-    requestId: crypto.randomUUID(),
-    promptId: choice.id,
-    renderedText: choice.body,
-    mode: "insert",
-  } satisfies Msg);
+  try {
+    await chrome.runtime.sendMessage({
+      type: "ACTION/EXECUTE",
+      requestId: crypto.randomUUID(),
+      promptId: choice.id,
+      renderedText: choice.body,
+      mode: "insert",
+    } satisfies Msg);
+    closePalette();
+  } catch (err) {
+    console.error("Failed to execute action:", err);
+    showToast("Action failed. Please try again.");
+  }
 }
 
 queryInput?.addEventListener("input", (e) => {
@@ -105,12 +179,17 @@ queryInput?.addEventListener("input", (e) => {
 queryInput?.addEventListener("keydown", (e) => {
   if (e.key === "ArrowDown") {
     e.preventDefault();
-    selectNext(1);
+    if (!isLoading && !error) {
+      selectNext(1);
+    }
   } else if (e.key === "ArrowUp") {
     e.preventDefault();
-    selectNext(-1);
+    if (!isLoading && !error) {
+      selectNext(-1);
+    }
   } else if (e.key === "Enter") {
     e.preventDefault();
+    // Enter immediately executes - will wait for results if loading
     void activateSelection();
   } else if (e.key === "Escape") {
     e.preventDefault();
@@ -130,14 +209,56 @@ window.addEventListener("keydown", (e) => {
 });
 
 window.addEventListener("load", () => {
-  queryInput?.focus();
-  render();
+  // Focus input and ensure it stays focused
+  if (queryInput) {
+    queryInput.focus();
+    // Re-focus if focus is lost (e.g., after clicking)
+    queryInput.addEventListener("blur", () => {
+      // Only re-focus if palette is still open and no other element was intentionally focused
+      setTimeout(() => {
+        if (document.activeElement === document.body && queryInput) {
+          queryInput.focus();
+        }
+      }, 0);
+    });
+  }
+  // Initial search with empty query
+  runSearch("");
 });
 
 chrome.runtime.onMessage.addListener((msg: Msg, sender) => {
   if (sender.id && sender.id !== chrome.runtime.id) return;
+
   if (msg.type === "UI/TOAST") {
     showToast(msg.message);
+    return;
+  }
+
+  // Handle search results
+  if (msg.type === "SEARCH/RESULTS") {
+    // Only process if this is the current pending request
+    if (pendingRequestId === msg.requestId) {
+      isLoading = false;
+      error = null;
+      results = msg.results;
+      selectedIndex = 0;
+      pendingRequestId = null;
+      render();
+    }
+    return;
+  }
+
+  // Handle search errors
+  if (msg.type === "SEARCH/ERROR") {
+    if (pendingRequestId === msg.requestId) {
+      isLoading = false;
+      error = msg.error.message || "Search error occurred";
+      results = [];
+      selectedIndex = 0;
+      pendingRequestId = null;
+      render();
+    }
+    return;
   }
 });
 
