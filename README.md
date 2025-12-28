@@ -3,18 +3,18 @@
 A local-first prompt palette focused on instant keyboard flow.
 
 ## MVP Features (UX-first)
-- Cmd/Ctrl+K opens the palette with focus in the input.
+- Cmd/Ctrl+K opens (and when open, closes) the palette with focus in the input.
 - Deterministic, keyword-only search over a small in-memory prompt set.
-- First meaningful result appears immediately; no loading states.
-- Arrow up/down to move selection; Enter executes immediately.
-- Enter inserts into the active editable field; if none, silently copies.
-- Esc dismisses instantly and restores prior focus.
+- First meaningful result appears quickly; a brief loading indicator shows if search is still in flight.
+- Arrow up/down to move selection; Enter executes (and waits briefly if results are still loading); click or double-click works too.
+- Enter inserts into the active editable field; if none, copies and surfaces a brief toast.
+- Esc or outside click dismisses instantly, with an overlay that blocks stray page clicks.
 - First run seeds a few example prompts so you can try the flow immediately.
 
 ## What it does
-- Injects into the active tab on-demand (when you press Cmd/Ctrl+K).
+- Registers the content script upfront when possible and falls back to on-demand injection when you press Cmd/Ctrl+K.
 - Runs locally with no network calls, telemetry, or remote storage.
-- Provides brief, unobtrusive toast feedback only on copy/insert failure.
+- Provides brief, unobtrusive toast feedback on copy/insert failure, or when waiting on in-flight results.
 
 ## What it does NOT do
 - No always-on `<all_urls>` content scripts.
@@ -30,7 +30,7 @@ A local-first prompt palette focused on instant keyboard flow.
 
 ## Privacy
 Local-only. No telemetry, no embeddings, no network calls in the MVP.
-On-demand injection: the content script is injected into the active tab only when you press Cmd/Ctrl+K (no always-on `<all_urls>` scope).
+Content script is registered per-Chrome profile and injected only for tabs where the hotkey is used; no background tracking.
 
 See: `PRIVACY.md`
 

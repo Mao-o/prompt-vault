@@ -1,8 +1,14 @@
 import type { Msg } from "../core/types";
 
 const IFRAME_ID = "__prompt_vault_palette_iframe__";
+const OVERLAY_ID = "__prompt_vault_palette_overlay__";
 let lastActiveElement: Element | null = null;
-let outsideClickHandler: ((event: MouseEvent) => void) | null = null;
+let overlayEl: HTMLDivElement | null = null;
+let toastEl: HTMLDivElement | null = null;
+let toastTimer: number | null = null;
+let typeaheadHandler: ((event: KeyboardEvent) => void) | null = null;
+let pendingTypeahead = "";
+let paletteReady = false;
 
 function isEditable(el: Element | null): el is HTMLInputElement | HTMLTextAreaElement | HTMLElement {
   if (!el) return false;
@@ -23,11 +29,70 @@ function restoreFocus() {
 function closePalette() {
   const existing = document.getElementById(IFRAME_ID);
   if (existing) existing.remove();
-  if (outsideClickHandler) {
-    document.removeEventListener("mousedown", outsideClickHandler, true);
-    outsideClickHandler = null;
+  if (overlayEl) {
+    overlayEl.remove();
+    overlayEl = null;
   }
+  if (typeaheadHandler) {
+    document.removeEventListener("keydown", typeaheadHandler, true);
+    typeaheadHandler = null;
+  }
+  if (toastTimer) {
+    window.clearTimeout(toastTimer);
+    toastTimer = null;
+  }
+  if (toastEl) {
+    toastEl.remove();
+    toastEl = null;
+  }
+  pendingTypeahead = "";
+  paletteReady = false;
   restoreFocus();
+}
+
+function showPageToast(message: string) {
+  // Clear existing toast and timer
+  if (toastTimer) {
+    window.clearTimeout(toastTimer);
+    toastTimer = null;
+  }
+  if (toastEl) {
+    toastEl.remove();
+    toastEl = null;
+  }
+  const toast = document.createElement("div");
+  toast.textContent = message;
+  toast.style.position = "fixed";
+  toast.style.left = "50%";
+  toast.style.bottom = "18px";
+  toast.style.transform = "translateX(-50%)";
+  toast.style.background = "rgba(20, 24, 33, 0.9)";
+  toast.style.color = "#fff";
+  toast.style.padding = "10px 14px";
+  toast.style.borderRadius = "12px";
+  toast.style.boxShadow = "0 10px 30px rgba(0,0,0,0.35)";
+  toast.style.fontSize = "13px";
+  toast.style.zIndex = "2147483647";
+  toast.style.pointerEvents = "none";
+  toast.style.opacity = "0";
+  toast.style.transition = "opacity 120ms ease";
+  document.documentElement.appendChild(toast);
+  requestAnimationFrame(() => {
+    toast.style.opacity = "1";
+  });
+  toastEl = toast;
+  toastTimer = window.setTimeout(() => {
+    if (toastEl) {
+      toastEl.style.opacity = "0";
+      window.setTimeout(() => {
+        if (toastEl) {
+          toastEl.remove();
+          toastEl = null;
+        }
+        toastTimer = null;
+      }, 180);
+    }
+  }, 2000);
 }
 
 function openPalette() {
@@ -35,10 +100,31 @@ function openPalette() {
   if (existing) return;
 
   lastActiveElement = document.activeElement;
+  pendingTypeahead = "";
+  paletteReady = false;
+
+  overlayEl = document.createElement("div");
+  overlayEl.id = OVERLAY_ID;
+  overlayEl.style.position = "fixed";
+  overlayEl.style.inset = "0";
+  overlayEl.style.background = "rgba(15, 18, 25, 0.35)";
+  overlayEl.style.backdropFilter = "blur(4px)";
+  overlayEl.style.zIndex = "2147483646";
+  overlayEl.style.pointerEvents = "auto";
+  overlayEl.addEventListener(
+    "mousedown",
+    (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      closePalette();
+    },
+    true
+  );
 
   const iframe = document.createElement("iframe");
   iframe.id = IFRAME_ID;
   iframe.src = chrome.runtime.getURL("ui/palette.html");
+  iframe.tabIndex = -1;
   iframe.style.position = "fixed";
   iframe.style.top = "16px";
   iframe.style.left = "50%";
@@ -50,16 +136,43 @@ function openPalette() {
   iframe.style.borderRadius = "16px";
   iframe.style.boxShadow = "0 16px 60px rgba(0,0,0,0.35)";
   iframe.style.background = "transparent";
+  iframe.addEventListener(
+    "load",
+    () => {
+      iframe.contentWindow?.focus();
+    },
+    { once: true }
+  );
 
+  document.documentElement.appendChild(overlayEl);
   document.documentElement.appendChild(iframe);
+  requestAnimationFrame(() => {
+    iframe.focus({ preventScroll: true });
+  });
 
-  outsideClickHandler = (event: MouseEvent) => {
-    const frame = document.getElementById(IFRAME_ID);
-    if (!frame) return;
-    if (event.target === frame) return;
-    closePalette();
+  typeaheadHandler = (event: KeyboardEvent) => {
+    if (paletteReady) return;
+    if (!document.getElementById(IFRAME_ID)) return;
+    if (event.isComposing) return;
+
+    if (event.key === "Escape" || ((event.metaKey || event.ctrlKey) && (event.key === "k" || event.key === "K"))) {
+      event.preventDefault();
+      closePalette();
+      return;
+    }
+
+    if (event.key === "Backspace") {
+      pendingTypeahead = pendingTypeahead.slice(0, -1);
+      event.preventDefault();
+      return;
+    }
+
+    if (event.key.length === 1 && !event.metaKey && !event.ctrlKey && !event.altKey) {
+      pendingTypeahead += event.key;
+      event.preventDefault();
+    }
   };
-  document.addEventListener("mousedown", outsideClickHandler, true);
+  document.addEventListener("keydown", typeaheadHandler, true);
 }
 
 function togglePalette() {
@@ -132,14 +245,36 @@ chrome.runtime.onMessage.addListener((msg: Msg, sender, sendResponse) => {
     return;
   }
 
+  if (msg.type === "UI/READY") {
+    if (!document.getElementById(IFRAME_ID)) return;
+    paletteReady = true;
+    if (typeaheadHandler) {
+      document.removeEventListener("keydown", typeaheadHandler, true);
+      typeaheadHandler = null;
+    }
+    if (pendingTypeahead) {
+      chrome.runtime.sendMessage({
+        type: "UI/TYPEAHEAD",
+        requestId: crypto.randomUUID(),
+        text: pendingTypeahead,
+      } satisfies Msg);
+      pendingTypeahead = "";
+    }
+    return;
+  }
+
   if (msg.type === "ACTION/EXECUTE") {
     (async () => {
       const target = lastActiveElement;
+      const targetEditable = isEditable(target);
       let success = insertTextAtCursor(target, msg.renderedText);
 
       if (!success) {
         const copied = await copyToClipboard(msg.renderedText);
         success = copied;
+        if (copied && !targetEditable) {
+          showPageToast("Copied instead (no editable field)");
+        }
         if (!copied) {
           chrome.runtime.sendMessage({
             type: "UI/TOAST",

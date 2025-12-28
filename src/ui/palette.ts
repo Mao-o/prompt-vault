@@ -1,6 +1,6 @@
 import type { Msg, SearchResult } from "../core/types";
 
-const queryInput = document.getElementById("query") as HTMLInputElement;
+const queryInput = document.getElementById("query") as HTMLInputElement | null;
 const resultsEl = document.getElementById("results") as HTMLDivElement;
 const closeButton = document.getElementById("close") as HTMLButtonElement;
 const toastEl = document.getElementById("toast") as HTMLDivElement;
@@ -13,6 +13,27 @@ let error: string | null = null;
 let pendingRequestId: string | null = null;
 let isComposing = false;
 let searchDebounce: number | null = null;
+let initialized = false;
+let currentQuery = "";
+let pendingActivation = false;
+let isPaletteOpen = false;
+let blurHandler: (() => void) | null = null;
+let windowFocusHandler: (() => void) | null = null;
+const WAIT_FOR_RESULTS_TIMEOUT_MS = 800;
+const SEARCH_DEBOUNCE_MS = 16;
+
+function focusQueryInput() {
+  if (!queryInput) return;
+  queryInput.focus({ preventScroll: true });
+}
+
+async function waitForResults(targetRequestId: string | null, timeoutMs = WAIT_FOR_RESULTS_TIMEOUT_MS) {
+  if (!targetRequestId) return;
+  const start = performance.now();
+  while (pendingRequestId === targetRequestId && isLoading && performance.now() - start < timeoutMs) {
+    await new Promise((resolve) => setTimeout(resolve, 24));
+  }
+}
 
 function render() {
   resultsEl.innerHTML = "";
@@ -44,6 +65,7 @@ function render() {
   results.forEach((result, idx) => {
     const item = document.createElement("div");
     item.className = "pv-result";
+    item.dataset.index = String(idx);
     if (idx === selectedIndex) item.classList.add("is-selected");
 
     const title = document.createElement("div");
@@ -70,9 +92,25 @@ function render() {
     loading.textContent = "Updating…";
     resultsEl.appendChild(loading);
   }
+
+  // Ensure selected item is visible
+  const selectedEl = resultsEl.querySelector<HTMLElement>(".pv-result.is-selected");
+  if (selectedEl) {
+    selectedEl.scrollIntoView({ block: "nearest" });
+  }
 }
 
 function runSearch(query: string) {
+  if (query === currentQuery && pendingRequestId) {
+    return;
+  }
+
+  if (query === currentQuery && !isLoading && !error && results.length) {
+    return;
+  }
+
+  currentQuery = query;
+  selectedIndex = 0;
   // Cancel pending request if any
   if (pendingRequestId) {
     pendingRequestId = null;
@@ -114,6 +152,18 @@ function closePalette() {
   // Cancel any pending search
   pendingRequestId = null;
   isLoading = false;
+  isPaletteOpen = false;
+
+  // Clean up event listeners
+  if (blurHandler && queryInput) {
+    queryInput.removeEventListener("blur", blurHandler);
+    blurHandler = null;
+  }
+  if (windowFocusHandler) {
+    window.removeEventListener("focus", windowFocusHandler);
+    windowFocusHandler = null;
+  }
+
   // Restore focus to the previous element if possible
   chrome.runtime.sendMessage({ type: "UI/CLOSE", requestId: crypto.randomUUID() } satisfies Msg);
 }
@@ -144,26 +194,36 @@ function clearToast() {
 }
 
 async function activateSelection() {
-  const choice = results[selectedIndex];
-  if (!choice) {
-    closePalette();
+  const awaitingRequest = pendingRequestId;
+  if (awaitingRequest) {
+    pendingActivation = true;
+    showToast("Loading results...");
+    await waitForResults(awaitingRequest, 2000); // Wait up to 2 seconds
+    // If request is still pending after timeout, let SEARCH/RESULTS handler complete it
+    if (pendingRequestId === awaitingRequest) {
+      return; // Still waiting, will be handled by SEARCH/RESULTS
+    }
+  }
+
+  // Check if we have results now
+  if (!results.length) {
+    pendingActivation = false;
+    showToast(isLoading ? "Searching..." : "No results to insert");
     return;
   }
 
-  // If still loading, wait a bit for results (with timeout)
-  if (isLoading && results.length === 0) {
-    const maxWait = 2000; // 2 seconds max wait
-    const startTime = Date.now();
-    while (isLoading && results.length === 0 && Date.now() - startTime < maxWait) {
-      await new Promise((resolve) => setTimeout(resolve, 50));
-    }
-    // Re-check after waiting
-    const updatedChoice = results[selectedIndex];
-    if (!updatedChoice) {
-      closePalette();
-      return;
-    }
+  if (selectedIndex >= results.length) {
+    selectedIndex = 0;
   }
+
+  const choice = results[selectedIndex];
+  if (!choice) {
+    pendingActivation = false;
+    return;
+  }
+
+  // Clear pending activation before executing
+  pendingActivation = false;
 
   try {
     await chrome.runtime.sendMessage({
@@ -189,7 +249,17 @@ queryInput?.addEventListener("input", (e) => {
   searchDebounce = window.setTimeout(() => {
     runSearch(value);
     searchDebounce = null;
-  }, 120);
+  }, SEARCH_DEBOUNCE_MS);
+});
+
+resultsEl?.addEventListener("click", (e) => {
+  const target = (e.target as HTMLElement | null)?.closest<HTMLElement>(".pv-result");
+  if (!target) return;
+  const idx = Number(target.dataset.index ?? -1);
+  if (Number.isNaN(idx) || idx < 0 || idx >= results.length) return;
+  selectedIndex = idx;
+  render();
+  void activateSelection();
 });
 
 queryInput?.addEventListener("keydown", (e) => {
@@ -233,27 +303,81 @@ window.addEventListener("keydown", (e) => {
   if (e.key === "Escape") {
     e.preventDefault();
     closePalette();
+  } else if ((e.metaKey || e.ctrlKey) && (e.key === "k" || e.key === "K")) {
+    e.preventDefault();
+    closePalette();
   }
 });
 
-window.addEventListener("load", () => {
+function initPalette() {
+  if (initialized) return;
+  initialized = true;
+  isPaletteOpen = true;
+
   document.body.classList.add("is-ready");
+  chrome.runtime.sendMessage({ type: "UI/READY" } satisfies Msg).catch((err) => {
+    console.debug("Prompt Vault: UI ready message failed", err);
+  });
+
   // Focus input and ensure it stays focused
   if (queryInput) {
-    queryInput.focus();
-    // Re-focus if focus is lost (e.g., after clicking)
-    queryInput.addEventListener("blur", () => {
-      // Only re-focus if palette is still open and no other element was intentionally focused
+    focusQueryInput();
+    // Re-focus if focus is lost (e.g., after clicking results)
+    // This handles iframe-internal focus movements
+    // Remove existing listener if any (defensive programming)
+    if (blurHandler) {
+      queryInput.removeEventListener("blur", blurHandler);
+    }
+    blurHandler = () => {
       setTimeout(() => {
-        if (document.activeElement === document.body && queryInput) {
-          queryInput.focus();
+        // Only re-focus if palette is still open and focus is on body
+        if (isPaletteOpen && queryInput && document.activeElement === document.body && queryInput.isConnected) {
+          focusQueryInput();
         }
       }, 0);
-    });
+    };
+    queryInput.addEventListener("blur", blurHandler);
   }
+
+  // Handle window/tab focus restoration when palette is open
+  // Remove existing listener if any (defensive programming)
+  if (windowFocusHandler) {
+    window.removeEventListener("focus", windowFocusHandler);
+  }
+  windowFocusHandler = () => {
+    // Only re-focus if palette is open (not closed)
+    if (!isPaletteOpen || !queryInput) return;
+
+    const activeEl = document.activeElement;
+    // Re-focus only if focus is on body/documentElement (lost focus scenario)
+    // Don't re-focus if user is interacting with other elements
+    if (
+      activeEl === document.body ||
+      activeEl === document.documentElement ||
+      activeEl === null
+    ) {
+      // Small delay to let other focus handlers (like blur) complete first
+      // This prevents duplicate focus calls when both blur and window.focus fire
+      setTimeout(() => {
+        // Double-check palette is still open and focus is still on body
+        if (isPaletteOpen && queryInput && document.activeElement === document.body) {
+          focusQueryInput();
+        }
+      }, 10); // Slightly longer delay to let blur handler run first
+    }
+  };
+  window.addEventListener("focus", windowFocusHandler);
+
   // Initial search with empty query
   runSearch("");
-});
+}
+
+
+if (document.readyState === "loading") {
+  document.addEventListener("DOMContentLoaded", initPalette, { once: true });
+} else {
+  initPalette();
+}
 
 chrome.runtime.onMessage.addListener(
   (msg: Msg, sender, _sendResponse): boolean | Promise<void> | undefined => {
@@ -261,6 +385,17 @@ chrome.runtime.onMessage.addListener(
 
     if (msg.type === "UI/TOAST") {
       showToast(msg.message);
+      return undefined;
+    }
+
+    if (msg.type === "UI/TYPEAHEAD") {
+      if (queryInput && msg.text) {
+        queryInput.value = `${queryInput.value}${msg.text}`;
+        const end = queryInput.value.length;
+        queryInput.setSelectionRange(end, end);
+        runSearch(queryInput.value);
+      }
+      focusQueryInput();
       return undefined;
     }
 
@@ -272,6 +407,10 @@ chrome.runtime.onMessage.addListener(
         selectedIndex = 0;
         pendingRequestId = null;
         render();
+        if (pendingActivation) {
+          pendingActivation = false;
+          void activateSelection();
+        }
       }
       return undefined;
     }
@@ -284,6 +423,10 @@ chrome.runtime.onMessage.addListener(
         selectedIndex = 0;
         pendingRequestId = null;
         render();
+        if (pendingActivation) {
+          pendingActivation = false;
+          showToast("Search failed. Please try again.");
+        }
       }
       return undefined;
     }

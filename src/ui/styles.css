@@ -1,5 +1,4 @@
 :root {
-:root {
   color-scheme: light dark;
   --bg: rgba(17, 19, 23, 0.98);
   --panel: rgba(255, 255, 255, 0.06);
@@ -84,6 +83,13 @@ body.is-ready {
 
 .pv-input-row {
   margin-bottom: 4px;
+}
+
+.pv-hints {
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.4;
+  padding: 0 2px 2px;
 }
 
 #query {

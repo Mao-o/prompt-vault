@@ -3,6 +3,7 @@
 ## Components
 1) Background (service worker)
 - Registers commands/hotkeys
+- Registers content script upfront (with fallback to on-demand injection)
 - Opens palette UI (extension page or side panel)
 - Message routing between UI <-> offscreen <-> content script
 - Maintains minimal in-memory cache (optional)
@@ -10,11 +11,13 @@
 2) UI (command palette)
 - Renders search box and results
 - Debounced query -> requests search results
-- Handles selection, variable fill, and action choice
+- Keeps focus pinned to the query input (iframe grabs focus on load, re-focus on blur)
+- Handles selection, variable fill, and action choice (single-click executes; Enter waits briefly for in-flight search to finish)
 
 3) Content Script
 - Detects active editable element
 - Inserts text safely OR triggers copy to clipboard
+- Provides overlay/backdrop and close-on-outside-click/Cmd+K behavior
 - Provides page context (domain) to ranking filters
 
 4) Offscreen Document

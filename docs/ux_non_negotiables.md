@@ -3,7 +3,7 @@
 - **No explicit saves, ever.** State changes auto-commit as the user types or navigates; forcing a save click inserts friction and breaks flow, turning the palette into a traditional form instead of a thinking extension.
 - **No folders or mandatory hierarchy.** Prompts stay flat with lightweight tags/pins; requiring structure forces premature organization, slowing capture and recall when the user is in a fast flow.
 - **No required titles.** Users can capture and reuse fragments without naming; forcing titles interrupts thought, increases cognitive load, and discourages quick jotting.
-- **First meaningful result within ~50ms of typing.** The palette must surface a useful candidate almost immediately; slower feedback breaks the “instant recall” illusion and teaches users to distrust the tool mid-flow.
+- **First meaningful result within ~50ms of typing (target).** The palette should surface a useful candidate almost immediately; if slower, show a brief loading indicator and keep prior results stable to preserve trust.
 - **Selection is single-keystroke, no confirmation.** Hitting Enter (or the default action key) must immediately act; confirmation dialogs or multi-step commits add latency and hesitation, violating the command palette muscle memory.
 - **Keyboard-only is fully sufficient.** Every action—open, search, select, insert/copy, edit—must be reachable without the mouse; requiring pointer use slows expert workflows and breaks accessibility for power users.
 - **UI disappears instantly, leaving no residue.** Closing after an action must remove all overlays/frames and focus the prior element; lingering UI or focus traps reminds users of the tool instead of letting them continue their task.

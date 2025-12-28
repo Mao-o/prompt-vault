@@ -2,6 +2,40 @@ import type { Msg, AppError } from "../core/types";
 import { searchPrompts } from "../core/search";
 import { recordUsage } from "../core/storage";
 
+const CONTENT_SCRIPT_ID = "prompt-vault-content";
+
+async function ensureContentScriptRegistered() {
+  try {
+    const existing = await chrome.scripting.getRegisteredContentScripts({ ids: [CONTENT_SCRIPT_ID] });
+    if (existing.length) return;
+
+    await chrome.scripting.registerContentScripts([
+      {
+        id: CONTENT_SCRIPT_ID,
+        js: ["content/content_script.js"],
+        matches: ["<all_urls>"],
+        runAt: "document_idle",
+        allFrames: false,
+        persistAcrossSessions: true,
+      },
+    ]);
+  } catch (error) {
+    console.warn("Prompt Vault: failed to register content script upfront", error);
+  }
+}
+
+function warmPaletteAssets() {
+  const assets = ["ui/palette.html", "ui/palette.js", "ui/styles.css"];
+  for (const asset of assets) {
+    fetch(chrome.runtime.getURL(asset)).catch((err) => {
+      console.debug("Prompt Vault: asset warmup failed", asset, err);
+    });
+  }
+}
+
+void ensureContentScriptRegistered();
+warmPaletteAssets();
+
 chrome.commands.onCommand.addListener(async (command) => {
   if (command !== "toggle-palette") return;
 

@@ -3,14 +3,17 @@
 ## Entry
 - Hotkey: Cmd+K (Mac) / Ctrl+K (Win/Linux)
 - Opens centered palette overlay (or side panel)
-- Focus always in input
+- Focus always in input (iframe grabs focus on load; query re-focuses if blurred while open)
+- Same hotkey closes when already open; Esc and outside-click close with no flicker
 
 ## Interaction
 - Typing updates results instantly
 - Arrow up/down changes selection
+- Mouse: single-click selects and activates; selection scrolls into view when navigating
 - Enter executes default action:
   - If active editable: Insert
   - Else: Copy
+  - If search is still loading, Enter waits briefly for first results instead of throwing “no results”
 - Cmd+Enter (or Ctrl+Enter): always Copy
 - Shift+Enter: open detail (preview + variables)
 

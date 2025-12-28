@@ -48,6 +48,7 @@ export type Msg =
   | { type: "UI/TOGGLE"; requestId: RequestId }
   | { type: "UI/OPEN"; requestId: RequestId }
   | { type: "UI/CLOSE"; requestId: RequestId }
+  | { type: "UI/TYPEAHEAD"; requestId: RequestId; text: string }
   | { type: "UI/TOAST"; requestId: RequestId; message: string }
 
   // --- Search ---
