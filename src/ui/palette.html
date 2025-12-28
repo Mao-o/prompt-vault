@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Prompt Vault Palette</title>
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <div id="app">
+      <header class="pv-header">
+        <div>
+          <div class="pv-title">Prompt Vault</div>
+          <div class="pv-subtitle">Local-first prompt palette</div>
+        </div>
+        <button id="close" aria-label="Close palette">✕</button>
+      </header>
+      <div class="pv-input-row">
+        <input id="query" type="text" autocomplete="off" placeholder="Search prompts..." />
+      </div>
+      <div id="results" class="pv-results" aria-live="polite"></div>
+      <div id="toast" class="pv-toast" role="status" aria-live="polite"></div>
+    </div>
+    <script type="module" src="./palette.js"></script>
+  </body>
+</html>
