@@ -1,0 +1,19 @@
+{
+  "name": "prompt-vault",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "clean": "rm -rf dist",
+    "typecheck": "tsc --noEmit",
+    "build": "npm run clean && npm run typecheck && tsup --config tsup.config.ts && npm run copy:static && npm run copy:manifest",
+    "dev": "tsup --watch --config tsup.config.ts --onSuccess \"npm run copy:static && npm run copy:manifest\"",
+    "copy:static": "mkdir -p dist/ui && cp src/ui/palette.html dist/ui/palette.html && cp src/ui/styles.css dist/ui/styles.css",
+    "copy:manifest": "cp src/manifest.json dist/manifest.json"
+  },
+  "devDependencies": {
+    "chrome-types": "^0.1.280",
+    "tsup": "^7.2.0",
+    "typescript": "^5.4.5"
+  }
+}

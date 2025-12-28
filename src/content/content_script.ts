@@ -119,7 +119,7 @@ async function copyToClipboard(text: string): Promise<boolean> {
   }
 }
 
-chrome.runtime.onMessage.addListener((msg: Msg, sender) => {
+chrome.runtime.onMessage.addListener(async (msg: Msg, sender) => {
   if (sender.id && sender.id !== chrome.runtime.id) return;
 
   if (msg.type === "UI/TOGGLE") {

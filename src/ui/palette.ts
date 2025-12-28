@@ -226,41 +226,42 @@ window.addEventListener("load", () => {
   runSearch("");
 });
 
-chrome.runtime.onMessage.addListener((msg: Msg, sender) => {
-  if (sender.id && sender.id !== chrome.runtime.id) return;
+chrome.runtime.onMessage.addListener(
+  (msg: Msg, sender, _sendResponse): boolean | Promise<void> | undefined => {
+    if (sender.id && sender.id !== chrome.runtime.id) return undefined;
 
-  if (msg.type === "UI/TOAST") {
-    showToast(msg.message);
-    return;
-  }
-
-  // Handle search results
-  if (msg.type === "SEARCH/RESULTS") {
-    // Only process if this is the current pending request
-    if (pendingRequestId === msg.requestId) {
-      isLoading = false;
-      error = null;
-      results = msg.results;
-      selectedIndex = 0;
-      pendingRequestId = null;
-      render();
+    if (msg.type === "UI/TOAST") {
+      showToast(msg.message);
+      return undefined;
     }
-    return;
-  }
 
-  // Handle search errors
-  if (msg.type === "SEARCH/ERROR") {
-    if (pendingRequestId === msg.requestId) {
-      isLoading = false;
-      error = msg.error.message || "Search error occurred";
-      results = [];
-      selectedIndex = 0;
-      pendingRequestId = null;
-      render();
+    if (msg.type === "SEARCH/RESULTS") {
+      if (pendingRequestId === msg.requestId) {
+        isLoading = false;
+        error = null;
+        results = msg.results;
+        selectedIndex = 0;
+        pendingRequestId = null;
+        render();
+      }
+      return undefined;
     }
-    return;
+
+    if (msg.type === "SEARCH/ERROR") {
+      if (pendingRequestId === msg.requestId) {
+        isLoading = false;
+        error = msg.error.message || "Search error occurred";
+        results = [];
+        selectedIndex = 0;
+        pendingRequestId = null;
+        render();
+      }
+      return undefined;
+    }
+
+    return undefined;
   }
-});
+);
 
 window.addEventListener("unload", () => {
   clearToast();
