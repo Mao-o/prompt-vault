@@ -33,6 +33,39 @@ export interface UsageStats {
 
 let dbInstance: IDBDatabase | null = null;
 
+const DEFAULT_PROMPTS: PromptRecord[] = [
+  {
+    id: "general-helper",
+    title: "General helper",
+    body: "You are a concise, helpful assistant.",
+    tags: ["general"],
+    pinned: true,
+    createdAt: 0,
+    updatedAt: 0,
+    lastUsedAt: 0,
+  },
+  {
+    id: "summarize",
+    title: "Summarize text",
+    body: "Summarize the following content in bullet points:",
+    tags: ["summary"],
+    pinned: false,
+    createdAt: 0,
+    updatedAt: 0,
+    lastUsedAt: 0,
+  },
+  {
+    id: "bug-report",
+    title: "Bug report",
+    body: "Steps to reproduce:\nExpected:\nActual:",
+    tags: ["template", "bug"],
+    pinned: false,
+    createdAt: 0,
+    updatedAt: 0,
+    lastUsedAt: 0,
+  },
+];
+
 /**
  * Open or upgrade IndexedDB connection
  */
@@ -105,8 +138,13 @@ function withStore<T>(
 // PROMPTS API
 // ============================================================================
 
-export function listPrompts(): Promise<PromptRecord[]> {
-  return withStore("prompts", "readonly", (store) => store.getAll());
+export async function listPrompts(): Promise<PromptRecord[]> {
+  const prompts = await withStore("prompts", "readonly", (store) => store.getAll());
+  if (prompts.length > 0) return prompts;
+
+  // Seed default prompts on first run to avoid an empty experience
+  const seeded = await seedDefaultPrompts();
+  return seeded;
 }
 
 export function getPrompt(id: PromptId): Promise<PromptRecord | undefined> {
@@ -131,6 +169,18 @@ export function deletePrompt(id: PromptId): Promise<void> {
         tx.onerror = () => reject(tx.error);
       })
   );
+}
+
+async function seedDefaultPrompts(): Promise<PromptRecord[]> {
+  const now = Date.now();
+  const seeded = DEFAULT_PROMPTS.map((prompt, idx) => ({
+    ...prompt,
+    createdAt: now + idx,
+    updatedAt: now + idx,
+    lastUsedAt: now + idx,
+  }));
+  await Promise.all(seeded.map((p) => upsertPrompt(p)));
+  return seeded;
 }
 
 // ============================================================================

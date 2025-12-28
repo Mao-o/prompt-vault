@@ -119,7 +119,7 @@ async function copyToClipboard(text: string): Promise<boolean> {
   }
 }
 
-chrome.runtime.onMessage.addListener(async (msg: Msg, sender) => {
+chrome.runtime.onMessage.addListener((msg: Msg, sender, sendResponse) => {
   if (sender.id && sender.id !== chrome.runtime.id) return;
 
   if (msg.type === "UI/TOGGLE") {
@@ -133,25 +133,45 @@ chrome.runtime.onMessage.addListener(async (msg: Msg, sender) => {
   }
 
   if (msg.type === "ACTION/EXECUTE") {
-    const target = lastActiveElement;
-    const inserted = insertTextAtCursor(target, msg.renderedText);
-    if (!inserted) {
-      const copied = await copyToClipboard(msg.renderedText);
-      if (!copied) {
+    (async () => {
+      const target = lastActiveElement;
+      let success = insertTextAtCursor(target, msg.renderedText);
+
+      if (!success) {
+        const copied = await copyToClipboard(msg.renderedText);
+        success = copied;
+        if (!copied) {
+          chrome.runtime.sendMessage({
+            type: "UI/TOAST",
+            requestId: crypto.randomUUID(),
+            message: "Copy failed. Try again.",
+          } satisfies Msg);
+        }
+      }
+
+      if (!success) {
+        sendResponse({ ok: false });
         chrome.runtime.sendMessage({
-          type: "UI/TOAST",
-          requestId: crypto.randomUUID(),
-          message: "Copy failed. Try again.",
+          type: "ACTION/RESULT",
+          requestId: msg.requestId,
+          ok: false,
+          error: {
+            code: "CONTENT_INSERT_FAILED",
+            message: "Insert/copy failed",
+            recoverable: true,
+          },
+        } satisfies Msg);
+      } else {
+        sendResponse({ ok: true });
+        chrome.runtime.sendMessage({
+          type: "ACTION/RESULT",
+          requestId: msg.requestId,
+          ok: true,
         } satisfies Msg);
       }
-    }
-    if (inserted === false) {
-      // For non-editable targets, insertion failed; toast only if copy also failed above.
-    }
-    if (!inserted) {
-      // If both insertion and copy failed, UI already notified; still close.
-    }
-    closePalette();
-    chrome.runtime.sendMessage({ type: "ACTION/RESULT", requestId: msg.requestId, ok: true } satisfies Msg);
+
+      closePalette();
+    })();
+    return true; // keep the channel open for async sendResponse
   }
 });

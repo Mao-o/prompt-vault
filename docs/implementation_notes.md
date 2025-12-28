@@ -10,6 +10,9 @@
 - `usage` - tracks usage events (promptId, usedAt, action), auto-increment key
 - `settings` - key-value store for app settings
 
+**Seeding:**
+- On first run (when `prompts` is empty), three default prompts are seeded to avoid an empty UX.
+
 **Promise API:**
 - `listPrompts()` → `Promise<PromptRecord[]>`
 - `upsertPrompt(prompt)` → `Promise<void>`
@@ -70,10 +73,10 @@ finalScore = sim × 0.8 + recencyBoost × 0.2 + pinBoost + siteBoost
 
 **ACTION/EXECUTE:**
 - Receives: `{ type: "ACTION/EXECUTE", requestId, promptId, renderedText, mode }`
-- Records usage via `recordUsage(promptId, mode)`
-- If mode="copy": writes to clipboard via `navigator.clipboard.writeText`
-- If mode="insert": forwards to content script as `CONTENT/INSERT` message
-- Responds: `ACTION/RESULT` with `ok: true/false` and optional `error: AppError`
+- Forwards the same message to the active tab’s content script.
+- Content script performs insert-or-copy; replies with `{ ok: boolean }` and emits `ACTION/RESULT`.
+- Background records usage **only when content script reports ok** (prevents double-count).
+- Clipboard is handled in the content script (service worker does not write to clipboard).
 
 **DIAG/PING:**
 - Simple health check, responds with `DIAG/PONG` from "background"

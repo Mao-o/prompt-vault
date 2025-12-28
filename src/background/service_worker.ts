@@ -81,79 +81,71 @@ chrome.runtime.onMessage.addListener((msg: Msg, sender, sendResponse) => {
     return true; // Keep channel open for async response
   }
 
-  // Handle ACTION/EXECUTE
+  // Handle ACTION/EXECUTE from UI and forward to content script
   if (msg.type === "ACTION/EXECUTE") {
-    const { promptId, renderedText, mode } = msg;
+    chrome.tabs
+      .query({ active: true, currentWindow: true })
+      .then(([tab]) => {
+        if (!tab?.id) {
+          const error: AppError = {
+            code: "NO_ACTIVE_EDITABLE",
+            message: "No active tab found",
+            recoverable: false,
+          };
+          const response: Msg = {
+            type: "ACTION/RESULT",
+            requestId: msg.requestId,
+            ok: false,
+            error,
+          };
+          sendResponse(response);
+          return;
+        }
 
-    // Record usage first
-    recordUsage(promptId, mode)
-      .then(() => {
-        if (mode === "copy") {
-          // Copy to clipboard
-          return navigator.clipboard.writeText(renderedText).then(() => {
+        // Forward the same ACTION/EXECUTE to content script; it handles insert/copy
+        chrome.tabs
+          .sendMessage(tab.id, msg)
+          .then((contentResponse: { ok: boolean } | undefined) => {
+            const ok = contentResponse?.ok === true;
             const response: Msg = {
               type: "ACTION/RESULT",
               requestId: msg.requestId,
-              ok: true,
+              ok,
+              error: ok
+                ? undefined
+                : {
+                    code: "CONTENT_INSERT_FAILED",
+                    message: "Insert/copy failed",
+                    recoverable: true,
+                  },
+            };
+
+            if (ok) {
+              void recordUsage(msg.promptId, msg.mode);
+            }
+
+            sendResponse(response);
+          })
+          .catch((err) => {
+            const error: AppError = {
+              code: "CONTENT_INSERT_FAILED",
+              message: err instanceof Error ? err.message : "Failed to execute action",
+              detail: err,
+              recoverable: true,
+            };
+            const response: Msg = {
+              type: "ACTION/RESULT",
+              requestId: msg.requestId,
+              ok: false,
+              error,
             };
             sendResponse(response);
           });
-        } else {
-          // For "insert" mode, forward to content script
-          chrome.tabs.query({ active: true, currentWindow: true }).then(([tab]) => {
-            if (!tab?.id) {
-              const error: AppError = {
-                code: "NO_ACTIVE_EDITABLE",
-                message: "No active tab found",
-                recoverable: false,
-              };
-              const response: Msg = {
-                type: "ACTION/RESULT",
-                requestId: msg.requestId,
-                ok: false,
-                error,
-              };
-              sendResponse(response);
-              return;
-            }
-
-            // Forward to content script for insertion
-            chrome.tabs
-              .sendMessage(tab.id, {
-                type: "CONTENT/INSERT",
-                requestId: msg.requestId,
-                text: renderedText,
-              })
-              .then(() => {
-                const response: Msg = {
-                  type: "ACTION/RESULT",
-                  requestId: msg.requestId,
-                  ok: true,
-                };
-                sendResponse(response);
-              })
-              .catch((err) => {
-                const error: AppError = {
-                  code: "CONTENT_INSERT_FAILED",
-                  message: err instanceof Error ? err.message : "Failed to insert text",
-                  detail: err,
-                  recoverable: true,
-                };
-                const response: Msg = {
-                  type: "ACTION/RESULT",
-                  requestId: msg.requestId,
-                  ok: false,
-                  error,
-                };
-                sendResponse(response);
-              });
-          });
-        }
       })
       .catch((err) => {
         const error: AppError = {
           code: "UNKNOWN",
-          message: err instanceof Error ? err.message : "Failed to record usage",
+          message: err instanceof Error ? err.message : "Failed to execute action",
           detail: err,
           recoverable: true,
         };

@@ -1,5 +1,4 @@
 import type { Msg, SearchResult } from "../core/types";
-import { recordUsage } from "../core/search";
 
 const queryInput = document.getElementById("query") as HTMLInputElement;
 const resultsEl = document.getElementById("results") as HTMLDivElement;
@@ -155,7 +154,6 @@ async function activateSelection() {
     }
   }
 
-  recordUsage(choice.id);
   try {
     await chrome.runtime.sendMessage({
       type: "ACTION/EXECUTE",

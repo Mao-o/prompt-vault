@@ -9,6 +9,7 @@ A local-first prompt palette focused on instant keyboard flow.
 - Arrow up/down to move selection; Enter executes immediately.
 - Enter inserts into the active editable field; if none, silently copies.
 - Esc dismisses instantly and restores prior focus.
+- First run seeds a few example prompts so you can try the flow immediately.
 
 ## What it does
 - Injects into the active tab on-demand (when you press Cmd/Ctrl+K).
