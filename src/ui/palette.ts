@@ -197,7 +197,7 @@ function closeVariableForm() {
 
 async function executeChoice(choice: SearchResult, renderedText = choice.body) {
   try {
-    await send<unknown>({
+    await send<Record<string, never>>({
       type: "ACTION/EXECUTE",
       requestId: crypto.randomUUID(),
       promptId: choice.id,
