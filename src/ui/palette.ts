@@ -384,6 +384,7 @@ chrome.runtime.onMessage.addListener((message: Msg, sender) => {
     renderResults();
   }
   if (message.type === "UI/TOAST") showToast(message.message);
+  return undefined;
 });
 
 document.body.classList.add("is-ready");
