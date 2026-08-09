@@ -1,6 +1,6 @@
 import type { Msg, AppError } from "../core/types";
 import { searchPrompts } from "../core/search";
-import { recordUsage } from "../core/storage";
+import { deletePrompt, listPrompts, recordUsage, upsertPrompt } from "../core/storage";
 
 const CONTENT_SCRIPT_ID = "prompt-vault-content";
 
@@ -113,6 +113,27 @@ chrome.runtime.onMessage.addListener((msg: Msg, sender, sendResponse) => {
       });
 
     return true; // Keep channel open for async response
+  }
+
+  if (msg.type === "PROMPT/LIST_REQUEST") {
+    listPrompts()
+      .then((prompts) => sendResponse({ ok: true, prompts }))
+      .catch((err) => sendResponse({ ok: false, error: err instanceof Error ? err.message : "Failed to list prompts" }));
+    return true;
+  }
+
+  if (msg.type === "PROMPT/UPSERT_REQUEST") {
+    upsertPrompt(msg.prompt)
+      .then(() => sendResponse({ ok: true }))
+      .catch((err) => sendResponse({ ok: false, error: err instanceof Error ? err.message : "Failed to save prompt" }));
+    return true;
+  }
+
+  if (msg.type === "PROMPT/DELETE_REQUEST") {
+    deletePrompt(msg.id)
+      .then(() => sendResponse({ ok: true }))
+      .catch((err) => sendResponse({ ok: false, error: err instanceof Error ? err.message : "Failed to delete prompt" }));
+    return true;
   }
 
   // Handle ACTION/EXECUTE from UI and forward to content script
