@@ -216,3 +216,95 @@ body.is-ready {
 .pv-toast.is-visible {
   opacity: 1;
 }
+
+
+.pv-header-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.pv-header-actions button,
+.pv-editor-heading button,
+.pv-editor-footer button {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  color: var(--text);
+  cursor: pointer;
+  padding: 6px 10px;
+}
+
+.pv-editor {
+  background: var(--panel-strong);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  display: grid;
+  gap: 10px;
+  padding: 12px;
+}
+
+.pv-editor[hidden] {
+  display: none;
+}
+
+.pv-editor-heading,
+.pv-editor-footer {
+  align-items: center;
+  display: flex;
+  gap: 10px;
+  justify-content: space-between;
+}
+
+.pv-editor label {
+  color: var(--muted);
+  display: grid;
+  font-size: 12px;
+  gap: 5px;
+}
+
+.pv-editor input[type="text"],
+.pv-editor textarea {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  color: var(--text);
+  font: inherit;
+  padding: 8px 10px;
+  resize: vertical;
+  width: 100%;
+}
+
+.pv-editor input:focus,
+.pv-editor textarea:focus {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+.pv-editor-footer {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.pv-pin {
+  align-items: center;
+  display: flex !important;
+  gap: 6px;
+}
+
+.pv-danger {
+  border-color: rgba(248, 113, 113, 0.5) !important;
+  color: #fca5a5 !important;
+}
+
+.pv-result {
+  color: var(--text);
+  cursor: pointer;
+  font: inherit;
+  text-align: left;
+  width: 100%;
+}
+
+#variable-fields {
+  display: grid;
+  gap: 10px;
+}
